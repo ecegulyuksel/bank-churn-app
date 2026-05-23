@@ -278,7 +278,7 @@ if page == "📊 Overview":
             legend=dict(orientation='h', yanchor='bottom', y=-0.18),
             font=dict(family='Inter', color='#0A1929'),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, theme=None)
 
     with col_r:
         st.markdown("### Dataset class distribution")
@@ -303,7 +303,7 @@ if page == "📊 Overview":
                                font_size=15, showarrow=False)],
             font=dict(family='Inter', color='#0A1929'),
         )
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, use_container_width=True, theme=None)
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown("### Full metrics table")
@@ -389,13 +389,13 @@ elif page == "👤 Single Customer":
 
         g1, g2, g3 = st.columns(3)
         with g1:
-            st.plotly_chart(gauge(lr_p, "Logistic Regression"), use_container_width=True)
+            st.plotly_chart(gauge(lr_p, "Logistic Regression"), use_container_width=True, theme=None)
             st.caption("Interpretable baseline model")
         with g2:
-            st.plotly_chart(gauge(xg_p, "XGBoost + CTGAN"), use_container_width=True)
+            st.plotly_chart(gauge(xg_p, "XGBoost + CTGAN"), use_container_width=True, theme=None)
             st.caption("Balanced training model")
         with g3:
-            st.plotly_chart(gauge(op_p, "XGBoost + Optuna ⭐"), use_container_width=True)
+            st.plotly_chart(gauge(op_p, "XGBoost + Optuna ⭐"), use_container_width=True, theme=None)
             st.caption("Best-in-class model")
 
         st.markdown("**Risk level (best model):** " + badge(op_p), unsafe_allow_html=True)
@@ -431,12 +431,24 @@ elif page == "👤 Single Customer":
 
         with ex_right:
             fig_shap, ax = plt.subplots(figsize=(7, 4))
+            
+            # --- ARKA PLANI BEYAZA ZORLA ---
+            fig_shap.patch.set_facecolor('white')
+            ax.set_facecolor('white')
+            
             colors_shap = ['#DC2626' if v > 0 else '#3B82F6' for v in sv.loc[sv_top.index]]
             ax.barh(sv_top.index[::-1], sv.loc[sv_top.index][::-1], color=colors_shap[::-1])
             ax.axvline(0, color='#374151', linewidth=0.8, linestyle='--')
-            ax.set_xlabel("SHAP value (impact on churn probability)")
-            ax.set_title("Feature Contributions", fontsize=11, fontweight='bold')
-            ax.tick_params(labelsize=9)
+            
+            # --- YAZILARI KOYU RENGE ZORLA ---
+            ax.set_xlabel("SHAP value (impact on churn probability)", color='#0A1929')
+            ax.set_title("Feature Contributions", fontsize=11, fontweight='bold', color='#0A1929')
+            ax.tick_params(labelsize=9, colors='#0A1929')
+            ax.spines['bottom'].set_color('#0A1929')
+            ax.spines['left'].set_color('#0A1929')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+
             plt.tight_layout()
             st.pyplot(fig_shap)
             plt.close()
@@ -608,7 +620,7 @@ elif page == "🎯 Risk Segmentation":
                 height=380, margin=dict(l=40,r=20,t=30,b=40),
                 showlegend=False, font=dict(family='Inter', color='#374151'),
             )
-            st.plotly_chart(fig_b, use_container_width=True)
+            st.plotly_chart(fig_b, use_container_width=True, theme=None)
 
             st.markdown("""
             | Risk Group | Recommended Action | Timeline |
@@ -636,7 +648,7 @@ elif page == "🎯 Risk Segmentation":
                 margin=dict(l=40,r=20,t=20,b=40),
                 font=dict(family='Inter', color='#374151'),
             )
-            st.plotly_chart(fig_h, use_container_width=True)
+            st.plotly_chart(fig_h, use_container_width=True, theme=None)
 
             cal = seg.groupby('Risk_Level')['Actual_Churn'].mean().reindex(['Low','Medium','High'])
             fig_c = go.Figure(go.Bar(
@@ -653,7 +665,7 @@ elif page == "🎯 Risk Segmentation":
                 height=340, margin=dict(l=40,r=20,t=50,b=40),
                 font=dict(family='Inter', color='#374151'),
             )
-            st.plotly_chart(fig_c, use_container_width=True)
+            st.plotly_chart(fig_c, use_container_width=True, theme=None)
             st.caption("Calibration plot: higher predicted risk correctly maps to higher real churn rates, confirming model reliability.")
 
     except FileNotFoundError:
@@ -701,7 +713,7 @@ elif page == "💡 Action Guide":
         yaxis=dict(color='#374151'),
         font=dict(family='Inter', color='#374151'),
     )
-    st.plotly_chart(fig_d, use_container_width=True)
+    st.plotly_chart(fig_d, use_container_width=True, theme=None)
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown("### Matched retention tactics")

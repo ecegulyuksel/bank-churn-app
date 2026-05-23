@@ -1,15 +1,6 @@
 """
-Bank Customer Churn Risk Manager
-Streamlit application built on top of LR + XGBoost (+ CTGAN + Optuna) models.
-
-Pages
------
-1. Overview Dashboard
-2. Single Customer Analysis (with SHAP explanation)
-3. Batch Prediction (CSV upload)
-4. Risk Segmentation
-5. Action Recommendations
-6. About
+Bank Customer Churn Risk Manager — v2
+Production-ready Streamlit app for bank churn risk intelligence.
 """
 
 import streamlit as st
@@ -22,273 +13,248 @@ import plotly.express as px
 import plotly.graph_objects as go
 from io import BytesIO
 
-# ============================================================
-# PAGE CONFIG & STYLING
-# ============================================================
+# ─────────────────────────────────────────────
+# PAGE CONFIG
+# ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Bank Churn Risk Manager",
+    page_title="Churn Risk Manager",
     page_icon="🏦",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS — refined fintech aesthetic (deep navy + gold)
 st.markdown("""
 <style>
-    /* Main font */
-    html, body, [class*="css"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap');
 
-    /* Headers */
-    h1, h2, h3 {
-        font-family: 'Playfair Display', Georgia, serif;
-        color: #0A1929;
-        letter-spacing: -0.5px;
-    }
-    h1 { font-weight: 700; }
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+h1, h2 { font-family: 'Playfair Display', serif; color: #0A1929; }
+h3, h4 { font-family: 'Inter', sans-serif; font-weight: 600; color: #0A1929; }
 
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0A1929 0%, #142943 100%);
-    }
-    [data-testid="stSidebar"] * {
-        color: #F5F5F0 !important;
-    }
-    [data-testid="stSidebar"] .stRadio label {
-        color: #F5F5F0 !important;
-        padding: 8px 0;
-    }
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0A1929 0%, #132F4C 100%);
+}
+[data-testid="stSidebar"] * { color: #E8F4FD !important; }
 
-    /* Metric cards */
-    [data-testid="stMetricValue"] {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #0A1929;
-    }
-    [data-testid="stMetricLabel"] {
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: #6B7280;
-    }
+/* Buttons */
+.stButton > button {
+    background: #0A1929; color: #F5F5F0; border: none;
+    border-radius: 6px; padding: 0.6rem 1.5rem;
+    font-weight: 600; font-size: 0.85rem; letter-spacing: 0.5px;
+    transition: all 0.2s;
+}
+.stButton > button:hover {
+    background: #D4AF37; color: #0A1929; transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(212,175,55,0.4);
+}
 
-    /* Buttons */
-    .stButton > button {
-        background: #0A1929;
-        color: #F5F5F0;
-        border: none;
-        border-radius: 4px;
-        padding: 0.6rem 1.5rem;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        font-size: 0.85rem;
-        transition: all 0.2s ease;
-    }
-    .stButton > button:hover {
-        background: #D4AF37;
-        color: #0A1929;
-        transform: translateY(-1px);
-    }
-    .stButton > button:focus {
-        background: #D4AF37;
-        color: #0A1929;
-        box-shadow: none;
-    }
+/* KPI cards */
+[data-testid="metric-container"] {
+    background: #ffffff;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 16px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+[data-testid="stMetricValue"] {
+    font-size: 1.9rem !important; font-weight: 700 !important;
+    color: #0A1929 !important;
+}
+[data-testid="stMetricLabel"] {
+    font-size: 0.78rem !important; text-transform: uppercase;
+    letter-spacing: 1px; color: #6B7280 !important;
+    font-weight: 600 !important;
+}
 
-    /* Risk badges */
-    .risk-low {
-        background: #D1FAE5;
-        color: #065F46;
-        padding: 8px 16px;
-        border-radius: 4px;
-        font-weight: 700;
-        display: inline-block;
-        border-left: 4px solid #10B981;
-    }
-    .risk-medium {
-        background: #FEF3C7;
-        color: #92400E;
-        padding: 8px 16px;
-        border-radius: 4px;
-        font-weight: 700;
-        display: inline-block;
-        border-left: 4px solid #F59E0B;
-    }
-    .risk-high {
-        background: #FEE2E2;
-        color: #991B1B;
-        padding: 8px 16px;
-        border-radius: 4px;
-        font-weight: 700;
-        display: inline-block;
-        border-left: 4px solid #DC2626;
-    }
+/* Risk badges */
+.badge-low    { background:#D1FAE5; color:#065F46; border-left:4px solid #10B981; padding:10px 18px; border-radius:6px; font-weight:700; font-size:1.1rem; display:inline-block; }
+.badge-medium { background:#FEF3C7; color:#92400E; border-left:4px solid #F59E0B; padding:10px 18px; border-radius:6px; font-weight:700; font-size:1.1rem; display:inline-block; }
+.badge-high   { background:#FEE2E2; color:#991B1B; border-left:4px solid #DC2626; padding:10px 18px; border-radius:6px; font-weight:700; font-size:1.1rem; display:inline-block; }
 
-    /* Headline accent line */
-    .accent-line {
-        width: 60px;
-        height: 3px;
-        background: #D4AF37;
-        margin: 8px 0 24px 0;
-    }
+/* Action box */
+.action-box { background:#EFF6FF; border:2px solid #3B82F6; border-radius:10px; padding:20px 24px; margin-top:12px; }
+.action-box-urgent { background:#FFF7ED; border:2px solid #F97316; border-radius:10px; padding:20px 24px; margin-top:12px; }
 
-    /* Hide streamlit branding */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+/* Info callout */
+.callout { background:#F0F9FF; border-left:4px solid #0EA5E9; padding:14px 18px; border-radius:0 8px 8px 0; margin:12px 0; font-size:0.92rem; color:#0C4A6E; }
+.callout-gold { background:#FFFBEB; border-left:4px solid #D4AF37; padding:14px 18px; border-radius:0 8px 8px 0; margin:12px 0; font-size:0.92rem; color:#78350F; }
+
+/* Section divider */
+.divider { height:2px; background:linear-gradient(90deg,#D4AF37,transparent); margin:20px 0 28px 0; }
+
+/* Hide streamlit chrome */
+#MainMenu,footer,header { visibility:hidden; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ============================================================
-# LOAD MODELS & ARTIFACTS
-# ============================================================
-@st.cache_resource
-def load_artifacts():
-    xgb_model  = joblib.load('xgb_model.pkl')
-    xgb_optuna = joblib.load('xgb_optuna.pkl')
-    scaler     = joblib.load('scaler.pkl')
-    artifacts  = joblib.load('artifacts.pkl')
-    lr_beta    = np.load('lr_beta.npy')
-    return xgb_model, xgb_optuna, scaler, artifacts, lr_beta
-
-
-@st.cache_resource
-def load_shap_explainer(_xgb_model):
-    return shap.TreeExplainer(_xgb_model)
-
+# ─────────────────────────────────────────────
+# LOAD MODELS
+# ─────────────────────────────────────────────
+@st.cache_resource(show_spinner="Loading models…")
+def load_all():
+    xgb   = joblib.load('xgb_model.pkl')
+    opt   = joblib.load('xgb_optuna.pkl')
+    sc    = joblib.load('scaler.pkl')
+    art   = joblib.load('artifacts.pkl')
+    beta  = np.load('lr_beta.npy')
+    expl  = shap.TreeExplainer(xgb)
+    return xgb, opt, sc, art, beta, expl
 
 try:
-    xgb_model, xgb_optuna, scaler, artifacts, lr_beta = load_artifacts()
-    explainer = load_shap_explainer(xgb_model)
-    MODELS_LOADED = True
+    xgb_model, xgb_optuna, scaler, artifacts, lr_beta, explainer = load_all()
+    READY = True
 except Exception as e:
-    MODELS_LOADED = False
-    LOAD_ERROR = str(e)
+    READY = False; ERR = str(e)
 
 
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
-def scale_value(raw, col_name):
-    """Apply StandardScaler transformation manually."""
-    idx = artifacts['sayisal_sutunlar'].index(col_name)
-    mean = artifacts['scaler_mean'][idx]
-    scale = artifacts['scaler_scale'][idx]
-    return (raw - mean) / scale
+# ─────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────
+NUMERIC_COLS = artifacts['sayisal_sutunlar'] if READY else []
 
+def scale_val(raw, col):
+    idx = NUMERIC_COLS.index(col)
+    return (raw - artifacts['scaler_mean'][idx]) / artifacts['scaler_scale'][idx]
 
-def build_customer_row(inputs: dict) -> pd.DataFrame:
-    """
-    Build a single-row DataFrame compatible with the trained models.
-    Starts from feature_means (default profile) and overrides with user inputs.
-    """
-    feature_names = artifacts['feature_names']
-    means         = artifacts['feature_means']
-    numeric_cols  = artifacts['sayisal_sutunlar']
-
-    row = pd.DataFrame([[means[c] for c in feature_names]], columns=feature_names)
-
+def build_row(inputs: dict) -> pd.DataFrame:
+    fn  = artifacts['feature_names']
+    row = pd.DataFrame([[artifacts['feature_means'][c] for c in fn]], columns=fn)
     for col, val in inputs.items():
-        if col in numeric_cols:
-            row[col] = scale_value(val, col)
-        elif col in feature_names:
+        if col in NUMERIC_COLS:
+            row[col] = scale_val(val, col)
+        elif col in fn:
             row[col] = val
     return row
 
+def predict_trio(row):
+    arr = np.concatenate([[1.0], row.astype(float).values[0]])
+    lr  = float(1 / (1 + np.exp(-lr_beta.dot(arr))))
+    xg  = float(xgb_model.predict_proba(row)[0][1])
+    op  = float(xgb_optuna.predict_proba(row)[0][1])
+    return lr, xg, op
 
-def predict_all_models(row_df: pd.DataFrame):
-    """Return churn probabilities for all three models."""
-    lr_input = np.concatenate([[1.0], row_df.astype(float).values[0]])
-    lr_prob  = float(1 / (1 + np.exp(-np.dot(lr_beta, lr_input))))
+def badge(p):
+    if p < .30: return f'<span class="badge-low">✅ LOW RISK — {p*100:.1f}%</span>'
+    if p < .60: return f'<span class="badge-medium">⚠️ MEDIUM RISK — {p*100:.1f}%</span>'
+    return          f'<span class="badge-high">🚨 HIGH RISK — {p*100:.1f}%</span>'
 
-    xgb_prob = float(xgb_model.predict_proba(row_df)[0][1])
-    opt_prob = float(xgb_optuna.predict_proba(row_df)[0][1])
+def rlabel(p):
+    return "Low" if p < .30 else ("Medium" if p < .60 else "High")
 
-    return lr_prob, xgb_prob, opt_prob
+def gauge(prob, title):
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=round(prob*100, 1),
+        number={'suffix': '%', 'font': {'size': 36, 'color': '#0A1929'}},
+        title={'text': title, 'font': {'size': 13, 'color': '#6B7280'}},
+        gauge={
+            'axis': {'range': [0, 100], 'tickcolor': '#9CA3AF'},
+            'bar': {'color': '#DC2626' if prob >= .6 else ('#F59E0B' if prob >= .3 else '#10B981')},
+            'steps': [
+                {'range': [0,  30], 'color': '#D1FAE5'},
+                {'range': [30, 60], 'color': '#FEF3C7'},
+                {'range': [60, 100], 'color': '#FEE2E2'},
+            ],
+        }
+    ))
+    fig.update_layout(height=200, margin=dict(l=20,r=20,t=40,b=10),
+                      paper_bgcolor='white', font_family='Inter')
+    return fig
 
 
-def risk_badge(prob: float) -> str:
-    """Return HTML-styled risk badge."""
-    if prob < 0.30:
-        return f'<div class="risk-low">LOW RISK &nbsp;&nbsp; {prob*100:.1f}%</div>'
-    elif prob < 0.60:
-        return f'<div class="risk-medium">MEDIUM RISK &nbsp;&nbsp; {prob*100:.1f}%</div>'
-    else:
-        return f'<div class="risk-high">HIGH RISK &nbsp;&nbsp; {prob*100:.1f}%</div>'
-
-
-def risk_label(prob: float) -> str:
-    if prob < 0.30:  return "Low"
-    elif prob < 0.60: return "Medium"
-    else:             return "High"
-
-
-# ============================================================
-# SIDEBAR NAVIGATION
-# ============================================================
+# ─────────────────────────────────────────────
+# SIDEBAR
+# ─────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("# 🏦 CHURN MANAGER")
-    st.markdown("<div style='color:#D4AF37; letter-spacing:2px; font-size:0.8rem;'>RISK INTELLIGENCE PANEL</div>", unsafe_allow_html=True)
+    st.markdown("## 🏦 Churn Risk Manager")
+    st.markdown("<div style='color:#D4AF37;font-size:.75rem;letter-spacing:2px;'>RISK INTELLIGENCE PANEL</div>", unsafe_allow_html=True)
     st.markdown("---")
-
-    page = st.radio(
-        "Navigation",
-        ["📊 Overview Dashboard",
-         "👤 Single Customer Analysis",
-         "📁 Batch Prediction",
-         "🎯 Risk Segmentation",
-         "💡 Action Recommendations",
-         "ℹ️ About"],
-        label_visibility="collapsed"
-    )
-
+    page = st.radio("", [
+        "📊 Overview",
+        "👤 Single Customer",
+        "📁 Batch Prediction",
+        "🎯 Risk Segmentation",
+        "💡 Action Guide",
+        "ℹ️ About",
+    ], label_visibility="collapsed")
     st.markdown("---")
-    st.markdown("### Models in production")
-    st.markdown("✓ Logistic Regression")
-    st.markdown("✓ XGBoost + CTGAN")
-    st.markdown("✓ XGBoost + Optuna")
-    st.markdown("---")
-    st.caption("Built with Streamlit · Ece Gül Yüksel · Selin İnce · Didem Hışırcı")
+    st.markdown("**Active models**")
+    st.markdown("— Logistic Regression\n— XGBoost + CTGAN\n— XGBoost + Optuna ⭐")
+    if READY:
+        st.success("Models loaded", icon="✅")
+    else:
+        st.error("Model load failed")
 
-
-# ============================================================
-# MODEL LOAD ERROR HANDLING
-# ============================================================
-if not MODELS_LOADED:
-    st.error(f"❌ Model files could not be loaded: {LOAD_ERROR}")
-    st.info("Please ensure the following files are in the same directory as app.py:\n"
-            "- xgb_model.pkl\n- xgb_optuna.pkl\n- scaler.pkl\n- artifacts.pkl\n- lr_beta.npy")
+if not READY:
+    st.error(f"Could not load model files: {ERR}")
     st.stop()
 
 
-# ============================================================
-# PAGE 1: OVERVIEW DASHBOARD
-# ============================================================
-if page == "📊 Overview Dashboard":
-    st.title("Overview Dashboard")
-    st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-    st.markdown("Strategic snapshot of customer churn risk across the portfolio.")
+# ══════════════════════════════════════════════════════
+# PAGE 1 — OVERVIEW
+# ══════════════════════════════════════════════════════
+if page == "📊 Overview":
+    st.title("Bank Customer Churn Risk Manager")
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-    # KPI cards
+    st.markdown("""
+    <div class="callout-gold">
+    <b>What is this tool?</b><br>
+    This application uses machine learning to identify which bank customers are at risk
+    of leaving (churning). By knowing who is likely to leave <i>before they actually do</i>,
+    your retention team can take targeted action — saving relationships and revenue.
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("### How to use this tool")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Customers", "10,127")
-    c2.metric("Current Churn Rate", "16.1%")
-    c3.metric("Best Model AUC", "0.991")
-    c4.metric("Recall (best model)", "89%")
+    with c1:
+        st.markdown("""
+        **① Single Customer**
+        Enter a customer's profile and instantly see their churn risk with a plain-language explanation.
+        """)
+    with c2:
+        st.markdown("""
+        **② Batch Prediction**
+        Upload a CSV of customers and download a scored file with risk levels for your whole portfolio.
+        """)
+    with c3:
+        st.markdown("""
+        **③ Risk Segmentation**
+        See your portfolio split into Low / Medium / High risk groups with calibration data.
+        """)
+    with c4:
+        st.markdown("""
+        **④ Action Guide**
+        Get concrete retention actions (call, campaign, cross-sell) matched to each risk driver.
+        """)
 
-    st.markdown("###  ")
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown("### Portfolio snapshot")
 
-    # Model performance comparison
-    col_left, col_right = st.columns([3, 2])
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Customers",  "10,127")
+    m2.metric("Historical Churn", "16.1%", help="Percentage of customers who left in the dataset")
+    m3.metric("Best Model AUC",   "0.991", help="Area under ROC curve — 1.0 = perfect, 0.5 = random")
+    m4.metric("Best Recall",      "89%",   help="Of customers who actually churn, we correctly flag 89%")
 
-    with col_left:
-        st.subheader("Model Performance Comparison")
-        st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-        df_comparison = pd.DataFrame({
+    col_l, col_r = st.columns([3, 2])
+
+    with col_l:
+        st.markdown("### Model performance comparison")
+        st.markdown("""
+        <div class="callout">
+        Three models were built. The radar chart shows how each performs across five metrics.
+        XGBoost + Optuna (gold) consistently outperforms the others, especially in <b>Recall</b>
+        — the most important metric for catching churning customers early.
+        </div>
+        """, unsafe_allow_html=True)
+
+        df_c = pd.DataFrame({
             'Model'     : ['Logistic Regression', 'XGBoost + CTGAN', 'XGBoost + Optuna'],
             'Accuracy'  : [0.90, 0.97, 0.97],
             'Precision' : [0.78, 0.92, 0.92],
@@ -296,468 +262,551 @@ if page == "📊 Overview Dashboard":
             'F1-Score'  : [0.64, 0.89, 0.90],
             'AUC'       : [0.917, 0.991, 0.990],
         })
-
-        # Plotly comparison
+        metrics = ['Accuracy','Precision','Recall','F1-Score','AUC']
+        colors  = ['#4472C4','#2ECC71','#D4AF37']
         fig = go.Figure()
-        metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score', 'AUC']
-        colors  = ['#4472C4', '#2ECC71', '#D4AF37']
-        for i, m in enumerate(df_comparison['Model']):
+        for i, m in enumerate(df_c['Model']):
             fig.add_trace(go.Scatterpolar(
-                r=df_comparison[metrics].iloc[i].values,
-                theta=metrics,
-                fill='toself',
-                name=m,
-                line=dict(color=colors[i], width=2),
-                opacity=0.7,
+                r=df_c[metrics].iloc[i].values, theta=metrics,
+                fill='toself', name=m,
+                line=dict(color=colors[i], width=2), opacity=0.75,
             ))
         fig.update_layout(
-            polar=dict(
-                radialaxis=dict(visible=True, range=[0.5, 1]),
-                bgcolor='#FAFAF7',
-            ),
-            paper_bgcolor='white',
+            polar=dict(radialaxis=dict(visible=True, range=[0.5,1]), bgcolor='#F9FAFB'),
+            paper_bgcolor='white', height=380,
+            margin=dict(l=40,r=40,t=20,b=20),
+            legend=dict(orientation='h', yanchor='bottom', y=-0.18),
             font=dict(family='Inter', color='#0A1929'),
-            height=420,
-            margin=dict(l=40, r=40, t=20, b=20),
-            legend=dict(orientation='h', yanchor='bottom', y=-0.15),
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    with col_right:
-        st.subheader("Class Distribution")
-        st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-
-        fig_pie = go.Figure(data=[go.Pie(
-            labels=['Retained', 'Churned'],
-            values=[8500, 1627],
-            hole=0.55,
-            marker=dict(colors=['#0A1929', '#D4AF37']),
-            textfont=dict(size=14, color='white'),
-        )])
+    with col_r:
+        st.markdown("### Dataset class distribution")
+        st.markdown("""
+        <div class="callout">
+        Only 16% of customers actually churn. This imbalance is why a naive model
+        would just predict "stays" every time and still appear 84% accurate —
+        which is useless in practice. We solved this with <b>CTGAN</b>.
+        </div>
+        """, unsafe_allow_html=True)
+        fig_pie = go.Figure(go.Pie(
+            labels=['Retained (84%)','Churned (16%)'],
+            values=[8500, 1627], hole=0.55,
+            marker=dict(colors=['#0A1929','#D4AF37']),
+            textfont=dict(size=14),
+        ))
         fig_pie.update_layout(
-            paper_bgcolor='white',
+            paper_bgcolor='white', height=280,
+            margin=dict(l=10,r=10,t=10,b=10),
+            legend=dict(orientation='h', yanchor='bottom', y=-0.08),
+            annotations=[dict(text='10,127<br>customers', x=.5, y=.5,
+                               font_size=15, showarrow=False)],
             font=dict(family='Inter', color='#0A1929'),
-            height=320,
-            margin=dict(l=20, r=20, t=20, b=20),
-            showlegend=True,
-            legend=dict(orientation='h', yanchor='bottom', y=-0.05),
-            annotations=[dict(text='10,127<br>customers', x=0.5, y=0.5,
-                             font_size=16, showarrow=False)],
         )
         st.plotly_chart(fig_pie, use_container_width=True)
 
-    st.markdown("###  ")
-    st.subheader("Detailed Metrics Table")
-    st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-    st.dataframe(df_comparison, use_container_width=True, hide_index=True)
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown("### Full metrics table")
+    st.dataframe(df_c, use_container_width=True, hide_index=True)
+    st.caption("Recall = share of actual churners we correctly flagged. F1 = balance of precision and recall.")
 
 
-# ============================================================
-# PAGE 2: SINGLE CUSTOMER ANALYSIS
-# ============================================================
-elif page == "👤 Single Customer Analysis":
+# ══════════════════════════════════════════════════════
+# PAGE 2 — SINGLE CUSTOMER
+# ══════════════════════════════════════════════════════
+elif page == "👤 Single Customer":
     st.title("Single Customer Analysis")
-    st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-    st.markdown("Enter customer attributes and receive an instant churn risk assessment "
-                "with **SHAP explanations** highlighting the most influential factors.")
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="callout-gold">
+    Fill in the customer's profile below and click <b>Run Risk Assessment</b>.
+    You'll see a churn probability, a visual risk gauge, an AI explanation of
+    the key drivers, and a tailored retention action.
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Two-column input layout
+    st.markdown("### Customer profile")
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("##### 🔄 Behavioral Profile")
-        total_trans_ct  = st.slider("Total transactions (last 12 months)",
-                                     10, 139, 60, help="Higher values strongly reduce churn risk")
-        total_trans_amt = st.slider("Total transaction amount ($)",
-                                     510, 18484, 4404, step=100)
-        total_rel_count = st.slider("Products held with the bank",
-                                     1, 6, 3)
-        months_inactive = st.slider("Months inactive (last 12)",
-                                     0, 6, 1, help="More inactivity → higher churn risk")
-        contacts_count  = st.slider("Customer-service contacts (last 12 months)",
-                                     0, 6, 2)
-        total_rev_bal   = st.slider("Total revolving balance ($)",
-                                     0, 2517, 1163, step=50)
+        st.markdown("**🔄 Activity & Transactions**")
+        total_trans_ct  = st.slider("Number of transactions in last 12 months", 10, 139, 60,
+            help="How many times the customer used their card or made a transfer. Low activity is a strong churn signal.")
+        total_trans_amt = st.slider("Total amount transacted ($)", 510, 18484, 4404, step=100,
+            help="Total dollar value of all transactions in the past year.")
+        total_rel_count = st.slider("Number of bank products held", 1, 6, 3,
+            help="Products include: credit card, savings account, loan, mortgage, etc. More products = stronger relationship.")
+        months_inactive = st.slider("Months of inactivity in last 12 months", 0, 6, 1,
+            help="How many months had zero account activity. 3+ months is a warning sign.")
+        contacts_count  = st.slider("Number of contacts with customer service", 0, 6, 2,
+            help="How many times the customer called or messaged support. Very high contact can signal dissatisfaction.")
+        total_rev_bal   = st.slider("Total revolving balance ($)", 0, 2517, 1163, step=50,
+            help="The outstanding credit card balance carried month-to-month. Higher balance = more engaged with the card.")
 
     with col2:
-        st.markdown("##### 👤 Demographics")
-        age              = st.slider("Customer age", 26, 73, 46)
-        dependents       = st.slider("Dependent count", 0, 5, 2)
-        months_on_book   = st.slider("Months on book", 13, 56, 36)
-        gender           = st.selectbox("Gender", ["F", "M"])
-        income           = st.selectbox("Income category",
-                                         ["Less than $40K", "$40K - $60K", "$60K - $80K",
-                                          "$80K - $120K", "$120K +", "Unknown"])
-        card             = st.selectbox("Card category",
-                                         ["Blue", "Silver", "Gold", "Platinum"])
+        st.markdown("**👤 Customer Demographics**")
+        age    = st.slider("Age", 26, 73, 46)
+        deps   = st.slider("Number of dependents (family members)", 0, 5, 2)
+        months = st.slider("Months as a customer (tenure)", 13, 56, 36,
+            help="How long this person has been with the bank.")
+        gender = st.selectbox("Gender", ["F", "M"])
+        income = st.selectbox("Annual income range", [
+            "Less than $40K", "$40K - $60K", "$60K - $80K",
+            "$80K - $120K", "$120K +", "Unknown"],
+            help="Self-reported income band.")
+        card   = st.selectbox("Card category", ["Blue","Silver","Gold","Platinum"],
+            help="Blue = standard entry-level card. Silver/Gold/Platinum = premium tiers with higher spending limits and benefits. Note: premium card holders show higher churn risk in our data.")
 
-    st.markdown("###  ")
+    st.markdown("###")
+    run = st.button("🔮 Run Risk Assessment", use_container_width=True)
 
-    # Predict button
-    if st.button("🔮 Run Risk Assessment", use_container_width=True):
-        # Build customer row
+    if run:
         inputs = {
-            'Customer_Age'              : age,
-            'Dependent_count'           : dependents,
-            'Months_on_book'            : months_on_book,
-            'Total_Relationship_Count'  : total_rel_count,
-            'Months_Inactive_12_mon'    : months_inactive,
-            'Contacts_Count_12_mon'     : contacts_count,
-            'Total_Revolving_Bal'       : total_rev_bal,
-            'Total_Trans_Amt'           : total_trans_amt,
-            'Total_Trans_Ct'            : total_trans_ct,
+            'Customer_Age'             : age,
+            'Dependent_count'          : deps,
+            'Months_on_book'           : months,
+            'Total_Relationship_Count' : total_rel_count,
+            'Months_Inactive_12_mon'   : months_inactive,
+            'Contacts_Count_12_mon'    : contacts_count,
+            'Total_Revolving_Bal'      : total_rev_bal,
+            'Total_Trans_Amt'          : total_trans_amt,
+            'Total_Trans_Ct'           : total_trans_ct,
         }
-        # One-hot fields
         if gender == 'M':
             inputs['Gender_M'] = 1
         if income != "$120K +":
-            col = f"Income_Category_{income}"
-            if col in artifacts['feature_names']:
-                inputs[col] = 1
-        if card in ['Silver', 'Gold', 'Platinum']:
-            col = f"Card_Category_{card}"
-            if col in artifacts['feature_names']:
-                inputs[col] = 1
+            k = f"Income_Category_{income}"
+            if k in artifacts['feature_names']: inputs[k] = 1
+        if card in ['Silver','Gold','Platinum']:
+            k = f"Card_Category_{card}"
+            if k in artifacts['feature_names']: inputs[k] = 1
 
-        row_df = build_customer_row(inputs)
-        lr_p, xgb_p, opt_p = predict_all_models(row_df)
+        row = build_row(inputs)
+        lr_p, xg_p, op_p = predict_trio(row)
 
-        # Display predictions
-        st.markdown("### Prediction Results")
-        st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+        st.markdown("### Risk Assessment Results")
 
-        rc1, rc2, rc3 = st.columns(3)
-        with rc1:
-            st.markdown("**Logistic Regression**")
-            st.markdown(risk_badge(lr_p), unsafe_allow_html=True)
-            st.caption("Interpretable baseline")
-        with rc2:
-            st.markdown("**XGBoost + CTGAN**")
-            st.markdown(risk_badge(xgb_p), unsafe_allow_html=True)
-            st.caption("Balanced training")
-        with rc3:
-            st.markdown("**XGBoost + Optuna ⭐**")
-            st.markdown(risk_badge(opt_p), unsafe_allow_html=True)
+        g1, g2, g3 = st.columns(3)
+        with g1:
+            st.plotly_chart(gauge(lr_p, "Logistic Regression"), use_container_width=True)
+            st.caption("Interpretable baseline model")
+        with g2:
+            st.plotly_chart(gauge(xg_p, "XGBoost + CTGAN"), use_container_width=True)
+            st.caption("Balanced training model")
+        with g3:
+            st.plotly_chart(gauge(op_p, "XGBoost + Optuna ⭐"), use_container_width=True)
             st.caption("Best-in-class model")
 
-        # SHAP explanation
-        st.markdown("###  ")
-        st.markdown("### Why this prediction?")
-        st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-        st.markdown("Each bar shows how a specific feature pushed the prediction "
-                    "*toward* (red) or *away from* (blue) churn.")
+        st.markdown("**Risk level (best model):** " + badge(op_p), unsafe_allow_html=True)
 
-        shap_vals = explainer.shap_values(row_df)
+        # ── SHAP explanation ──────────────────────────────────
+        st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+        st.markdown("### Why did the model give this score?")
 
-        fig, ax = plt.subplots(figsize=(11, 5))
-        shap.plots._waterfall.waterfall_legacy(
-            explainer.expected_value,
-            shap_vals[0],
-            feature_names=row_df.columns,
-            max_display=12,
-            show=False,
-        )
-        plt.tight_layout()
-        st.pyplot(fig)
-        plt.close()
+        ex_left, ex_right = st.columns([1, 1])
+        with ex_left:
+            shap_vals = explainer.shap_values(row)
+            sv        = pd.Series(shap_vals[0], index=row.columns)
+            sv_top    = sv.abs().sort_values(ascending=False).head(8)
 
-        # Tailored action
-        st.markdown("###  ")
-        st.markdown("### Suggested action")
-        st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-        prob_use = opt_p
-        if prob_use >= 0.60:
-            st.error("🚨 **HIGH-PRIORITY INTERVENTION RECOMMENDED**")
-            actions = []
-            if total_trans_ct < 40:
-                actions.append("• Send a **cashback / reward campaign** to re-activate transactions")
-            if months_inactive >= 3:
-                actions.append("• Schedule a **relationship-manager outreach call** within 7 days")
-            if total_rel_count <= 2:
-                actions.append("• Offer a **cross-sell promotion** (savings, credit card, investment)")
-            if not actions:
-                actions.append("• Initiate **personalized retention review** with senior advisor")
-            for a in actions:
-                st.markdown(a)
-        elif prob_use >= 0.30:
-            st.warning("⚠️ **Medium risk** — monitor for the next 30 days; include in periodic engagement campaigns.")
+            st.markdown("""
+            <div class="callout">
+            The chart on the right shows which features pushed this customer's
+            risk score <span style="color:#DC2626;font-weight:600;">up (red / right)</span> or
+            <span style="color:#3B82F6;font-weight:600;">down (blue / left)</span>.
+            The longer the bar, the bigger the impact.
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown("**Top factors for this customer:**")
+            for feat in sv_top.index:
+                direction = "⬆ increases" if sv[feat] > 0 else "⬇ reduces"
+                color     = "#DC2626" if sv[feat] > 0 else "#059669"
+                st.markdown(
+                    f"<span style='color:{color};font-weight:600;'>• {feat}</span> "
+                    f"— <em>{direction} churn risk</em>",
+                    unsafe_allow_html=True
+                )
+
+        with ex_right:
+            fig_shap, ax = plt.subplots(figsize=(7, 4))
+            colors_shap = ['#DC2626' if v > 0 else '#3B82F6' for v in sv.loc[sv_top.index]]
+            ax.barh(sv_top.index[::-1], sv.loc[sv_top.index][::-1], color=colors_shap[::-1])
+            ax.axvline(0, color='#374151', linewidth=0.8, linestyle='--')
+            ax.set_xlabel("SHAP value (impact on churn probability)")
+            ax.set_title("Feature Contributions", fontsize=11, fontweight='bold')
+            ax.tick_params(labelsize=9)
+            plt.tight_layout()
+            st.pyplot(fig_shap)
+            plt.close()
+
+        # ── Suggested action ─────────────────────────────────
+        st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+        st.markdown("### 🎯 Recommended Action")
+
+        actions = []
+        if total_trans_ct < 40:
+            actions.append("**Send a cashback / reward campaign** — re-activate card usage with category-based incentives. Target: +20% transaction count within 60 days.")
+        if months_inactive >= 3:
+            actions.append("**Schedule a relationship-manager outreach call** — personal contact within 7 days. Goal: identify the dormant cause (life event, dissatisfaction, competitor offer).")
+        if total_rel_count <= 2:
+            actions.append("**Make a cross-sell offer** — bundle savings account, credit card upgrade, or investment product. Customers with 3+ products are significantly less likely to leave.")
+        if contacts_count >= 4:
+            actions.append("**Review recent service interactions** — high contact count suggests unresolved friction. Escalate to a senior advisor for a satisfaction review.")
+        if not actions:
+            actions.append("**Maintain standard engagement** — this customer appears satisfied. Include in quarterly relationship-health check.")
+
+        box_class = "action-box-urgent" if op_p >= 0.6 else "action-box"
+        action_html = f'<div class="{box_class}">'
+        if op_p >= 0.6:
+            action_html += "<b>🚨 HIGH PRIORITY — Act within 7 days</b><br><br>"
+        elif op_p >= 0.3:
+            action_html += "<b>⚠️ MEDIUM PRIORITY — Include in next retention cycle</b><br><br>"
         else:
-            st.success("✅ **Low risk** — customer appears engaged. Continue standard service.")
+            action_html += "<b>✅ LOW PRIORITY — Standard monitoring</b><br><br>"
+        for a in actions:
+            action_html += f"• {a}<br><br>"
+        action_html += "</div>"
+        st.markdown(action_html, unsafe_allow_html=True)
 
 
-# ============================================================
-# PAGE 3: BATCH PREDICTION
-# ============================================================
+# ══════════════════════════════════════════════════════
+# PAGE 3 — BATCH PREDICTION
+# ══════════════════════════════════════════════════════
 elif page == "📁 Batch Prediction":
     st.title("Batch Prediction")
-    st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-    st.markdown("Upload a CSV of preprocessed customer records to receive churn "
-                "probabilities and risk levels for the entire portfolio.")
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="callout-gold">
+    Score your <b>entire customer portfolio at once</b>. Upload a CSV file and download
+    a new file with each customer's churn probability and risk level added.
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.info("📋 **CSV format expected:** Same 29 features used in model training. "
-            "You can download `X_test.csv` from the repository as a reference template.")
+    st.markdown("### Step-by-step guide")
+    s1, s2, s3 = st.columns(3)
+    s1.markdown("**① Download the template**\nClick the button below to get a sample CSV showing the exact format required.")
+    s2.markdown("**② Upload your file**\nReplace the sample rows with your own customers (same column headers).")
+    s3.markdown("**③ Download results**\nThe app will add `Churn_Probability` and `Risk_Level` columns.")
 
-    uploaded = st.file_uploader("Choose a CSV file", type="csv")
+    # Template download using X_test
+    try:
+        template_df = pd.read_csv('X_test.csv').head(10)
+        csv_template = template_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            "📥 Download sample template (10 rows)",
+            csv_template, "churn_template.csv", "text/csv",
+        )
+    except FileNotFoundError:
+        st.info("Template file not found in repo. Use any CSV with the 29 model features.")
 
-    if uploaded is not None:
-        df = pd.read_csv(uploaded)
-        st.markdown("##### Preview of uploaded data")
-        st.dataframe(df.head(), use_container_width=True)
-        st.caption(f"Total records: {len(df):,}")
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    uploaded = st.file_uploader(
+        "Drop your CSV here — or click to browse",
+        type="csv",
+        help="Must contain the same 29 feature columns as the template."
+    )
 
-        if st.button("⚡ Run Batch Predictions", use_container_width=True):
-            with st.spinner("Scoring customers..."):
-                # Predict with best model
-                proba = xgb_optuna.predict_proba(df)[:, 1]
+    if uploaded:
+        df_up = pd.read_csv(uploaded)
+        st.markdown(f"**Preview** — {len(df_up):,} customers loaded")
+        st.dataframe(df_up.head(5), use_container_width=True)
+
+        if st.button("⚡ Score All Customers", use_container_width=True):
+            with st.spinner(f"Scoring {len(df_up):,} customers…"):
+                proba = xgb_optuna.predict_proba(df_up)[:, 1]
                 pred  = (proba >= 0.5).astype(int)
+                result = df_up.copy()
+                result['Churn_Probability_%'] = (proba * 100).round(2)
+                result['Predicted_Churn']     = pred
+                result['Risk_Level']          = [rlabel(p) for p in proba]
 
-                result = df.copy()
-                result['Churn_Probability'] = (proba * 100).round(2)
-                result['Predicted_Churn']   = pred
-                result['Risk_Level']        = [risk_label(p) for p in proba]
+            st.success(f"✅ {len(result):,} customers scored.")
 
-            st.success(f"✅ Scored {len(result):,} customers successfully.")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Low Risk",    int((result['Risk_Level']=='Low').sum()))
+            m2.metric("Medium Risk", int((result['Risk_Level']=='Medium').sum()))
+            m3.metric("High Risk",   int((result['Risk_Level']=='High').sum()))
+            m4.metric("Avg Churn Prob", f"{result['Churn_Probability_%'].mean():.1f}%")
 
-            # Summary
-            sc1, sc2, sc3, sc4 = st.columns(4)
-            sc1.metric("Low Risk",    int((result['Risk_Level'] == 'Low').sum()))
-            sc2.metric("Medium Risk", int((result['Risk_Level'] == 'Medium').sum()))
-            sc3.metric("High Risk",   int((result['Risk_Level'] == 'High').sum()))
-            sc4.metric("Avg Churn Prob", f"{result['Churn_Probability'].mean():.1f}%")
+            st.markdown("**Top 20 highest-risk customers:**")
+            st.dataframe(
+                result.sort_values('Churn_Probability_%', ascending=False)
+                      [['Churn_Probability_%','Predicted_Churn','Risk_Level']].head(20),
+                use_container_width=True
+            )
 
-            st.markdown("##### Results preview")
-            display_cols = ['Churn_Probability', 'Predicted_Churn', 'Risk_Level']
-            st.dataframe(result[display_cols].head(20), use_container_width=True)
-
-            # Download
-            csv = result.to_csv(index=False).encode('utf-8')
+            dl = result.to_csv(index=False).encode('utf-8')
             st.download_button(
-                "📥 Download full results (CSV)",
-                csv,
-                "churn_predictions.csv",
-                "text/csv",
+                "📥 Download full scored file",
+                dl, "churn_scored.csv", "text/csv",
                 use_container_width=True,
             )
 
 
-# ============================================================
-# PAGE 4: RISK SEGMENTATION
-# ============================================================
+# ══════════════════════════════════════════════════════
+# PAGE 4 — RISK SEGMENTATION
+# ══════════════════════════════════════════════════════
 elif page == "🎯 Risk Segmentation":
     st.title("Risk Segmentation")
-    st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-    st.markdown("Strategic partition of the test-set portfolio by predicted churn risk.")
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="callout-gold">
+    This page automatically divides customers into three risk groups —
+    <b>Low, Medium, and High</b> — so your team can prioritise who to contact first.
+    It also shows how accurate these groupings are against real historical outcomes.
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Load test data
     @st.cache_data
-    def load_test_data():
-        X = pd.read_csv('X_test.csv')
-        y = pd.read_csv('y_test.csv').squeeze()
-        proba = xgb_optuna.predict_proba(X)[:, 1]
-        return X, y, proba
+    def get_seg():
+        X  = pd.read_csv('X_test.csv')
+        y  = pd.read_csv('y_test.csv').squeeze()
+        p  = xgb_optuna.predict_proba(X)[:, 1]
+        return X, y, p
 
     try:
-        X_test, y_test, proba = load_test_data()
-
+        _, y_t, prob = get_seg()
         seg = pd.DataFrame({
-            'Probability': proba,
-            'Actual_Churn': y_test.values,
-            'Risk_Level': [risk_label(p) for p in proba],
+            'Probability'  : prob,
+            'Actual_Churn' : y_t.values,
+            'Risk_Level'   : [rlabel(p) for p in prob],
         })
 
-        # KPIs
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Low Risk",    int((seg['Risk_Level']=='Low').sum()),
-                  f"{(seg['Risk_Level']=='Low').mean()*100:.1f}%")
-        c2.metric("Medium Risk", int((seg['Risk_Level']=='Medium').sum()),
-                  f"{(seg['Risk_Level']=='Medium').mean()*100:.1f}%")
-        c3.metric("High Risk",   int((seg['Risk_Level']=='High').sum()),
-                  f"{(seg['Risk_Level']=='High').mean()*100:.1f}%")
+        m1, m2, m3 = st.columns(3)
+        low_n = int((seg['Risk_Level']=='Low').sum())
+        mid_n = int((seg['Risk_Level']=='Medium').sum())
+        hi_n  = int((seg['Risk_Level']=='High').sum())
+        m1.metric("Low Risk customers",    f"{low_n:,}",
+                  help="Churn probability < 30% — maintain standard service")
+        m2.metric("Medium Risk customers", f"{mid_n:,}",
+                  help="Churn probability 30–60% — include in next retention wave")
+        m3.metric("High Risk customers",   f"{hi_n:,}",
+                  help="Churn probability > 60% — prioritise for immediate outreach")
 
-        st.markdown("###  ")
+        tab_biz, tab_data = st.tabs(["📋 For Relationship Managers", "📈 For Data & Analytics Team"])
 
-        col_a, col_b = st.columns([3, 2])
+        with tab_biz:
+            st.markdown("#### What does this mean for your team?")
+            st.markdown("""
+            The bar chart below shows how many customers fall into each risk category.
+            **Focus your retention budget on the red (High Risk) group first** — these are
+            the customers most likely to leave in the coming months.
+            """)
+            counts = seg['Risk_Level'].value_counts().reindex(['Low','Medium','High'])
+            fig_b = go.Figure(go.Bar(
+                x=counts.index, y=counts.values,
+                marker_color=['#10B981','#F59E0B','#DC2626'],
+                text=[f"{v:,}" for v in counts.values],
+                textposition='outside', textfont=dict(color='#0A1929', size=14),
+            ))
+            fig_b.update_layout(
+                paper_bgcolor='white', plot_bgcolor='#F9FAFB',
+                yaxis=dict(title='Number of customers', color='#374151'),
+                xaxis=dict(color='#374151'),
+                height=380, margin=dict(l=40,r=20,t=30,b=40),
+                showlegend=False, font=dict(family='Inter', color='#374151'),
+            )
+            st.plotly_chart(fig_b, use_container_width=True)
 
-        with col_a:
-            st.subheader("Distribution of Predicted Probabilities")
-            st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-            fig_hist = px.histogram(
+            st.markdown("""
+            | Risk Group | Recommended Action | Timeline |
+            |---|---|---|
+            | 🔴 High Risk | Personal outreach call or priority retention offer | Within 7 days |
+            | 🟡 Medium Risk | Include in automated campaign / newsletter | Within 30 days |
+            | 🟢 Low Risk | Standard service — quarterly health check | Ongoing |
+            """)
+
+        with tab_data:
+            st.markdown("#### Probability distribution and model calibration")
+            st.markdown("""
+            The histogram shows how model confidence is distributed across the test set.
+            The calibration chart confirms that customers assigned to higher risk groups
+            actually have higher real-world churn rates — validating the model's reliability.
+            """)
+            fig_h = px.histogram(
                 seg, x='Probability', nbins=40, color='Risk_Level',
-                color_discrete_map={'Low': '#10B981', 'Medium': '#F59E0B', 'High': '#DC2626'},
+                color_discrete_map={'Low':'#10B981','Medium':'#F59E0B','High':'#DC2626'},
+                labels={'Probability':'Predicted churn probability', 'Risk_Level':'Risk group'},
             )
-            fig_hist.update_layout(
-                paper_bgcolor='white', plot_bgcolor='#FAFAF7',
-                font=dict(family='Inter', color='#0A1929'),
-                bargap=0.05,
-                height=400,
-                margin=dict(l=40, r=20, t=20, b=40),
+            fig_h.update_layout(
+                paper_bgcolor='white', plot_bgcolor='#F9FAFB',
+                height=340, bargap=0.05,
+                margin=dict(l=40,r=20,t=20,b=40),
+                font=dict(family='Inter', color='#374151'),
             )
-            st.plotly_chart(fig_hist, use_container_width=True)
+            st.plotly_chart(fig_h, use_container_width=True)
 
-        with col_b:
-            st.subheader("Segment Breakdown")
-            st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-            counts = seg['Risk_Level'].value_counts().reindex(['Low', 'Medium', 'High'])
-            fig_bar = go.Figure(data=[go.Bar(
-                x=counts.index,
-                y=counts.values,
-                marker=dict(color=['#10B981', '#F59E0B', '#DC2626']),
-                text=counts.values,
-                textposition='outside',
-            )])
-            fig_bar.update_layout(
-                paper_bgcolor='white', plot_bgcolor='#FAFAF7',
-                font=dict(family='Inter', color='#0A1929'),
-                height=400,
-                margin=dict(l=40, r=20, t=20, b=40),
-                showlegend=False,
-                yaxis=dict(title='Customer count'),
+            cal = seg.groupby('Risk_Level')['Actual_Churn'].mean().reindex(['Low','Medium','High'])
+            fig_c = go.Figure(go.Bar(
+                x=cal.index, y=(cal.values*100).round(1),
+                marker_color=['#10B981','#F59E0B','#DC2626'],
+                text=[f"{v:.1f}%" for v in (cal.values*100)],
+                textposition='outside', textfont=dict(color='#0A1929', size=13),
+            ))
+            fig_c.update_layout(
+                title="Actual churn rate per risk group (model calibration)",
+                paper_bgcolor='white', plot_bgcolor='#F9FAFB',
+                yaxis=dict(title='Actual churn rate (%)', range=[0,100], color='#374151'),
+                xaxis=dict(color='#374151'),
+                height=340, margin=dict(l=40,r=20,t=50,b=40),
+                font=dict(family='Inter', color='#374151'),
             )
-            st.plotly_chart(fig_bar, use_container_width=True)
-
-        st.markdown("###  ")
-        st.subheader("Model Calibration: Risk Level vs Actual Churn")
-        st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-        cal = seg.groupby('Risk_Level')['Actual_Churn'].mean().reindex(['Low', 'Medium', 'High'])
-        cal_df = pd.DataFrame({
-            'Risk_Level': cal.index,
-            'Actual_Churn_Rate': (cal.values * 100).round(1)
-        })
-        fig_cal = px.bar(
-            cal_df, x='Risk_Level', y='Actual_Churn_Rate',
-            color='Risk_Level',
-            color_discrete_map={'Low': '#10B981', 'Medium': '#F59E0B', 'High': '#DC2626'},
-            text='Actual_Churn_Rate',
-        )
-        fig_cal.update_traces(texttemplate='%{text}%', textposition='outside')
-        fig_cal.update_layout(
-            paper_bgcolor='white', plot_bgcolor='#FAFAF7',
-            font=dict(family='Inter', color='#0A1929'),
-            height=350,
-            yaxis=dict(title='Actual churn rate (%)', range=[0, 100]),
-            xaxis=dict(title=''),
-            showlegend=False,
-            margin=dict(l=40, r=20, t=20, b=40),
-        )
-        st.plotly_chart(fig_cal, use_container_width=True)
-        st.caption("Higher predicted risk segments show progressively higher actual churn rates — confirming model calibration.")
+            st.plotly_chart(fig_c, use_container_width=True)
+            st.caption("Calibration plot: higher predicted risk correctly maps to higher real churn rates, confirming model reliability.")
 
     except FileNotFoundError:
-        st.warning("Test set files (`X_test.csv` and `y_test.csv`) not found. Upload them alongside the app.")
+        st.warning("X_test.csv / y_test.csv not found. Upload them alongside app.py in the repository.")
 
 
-# ============================================================
-# PAGE 5: ACTION RECOMMENDATIONS
-# ============================================================
-elif page == "💡 Action Recommendations":
-    st.title("Action Recommendations")
-    st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-    st.markdown("Rule-based retention strategies derived from SHAP analysis findings.")
+# ══════════════════════════════════════════════════════
+# PAGE 5 — ACTION GUIDE
+# ══════════════════════════════════════════════════════
+elif page == "💡 Action Guide":
+    st.title("Retention Action Guide")
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="callout-gold">
+    Based on our SHAP analysis, these are the features that most strongly predict churn.
+    Each one has a matched retention tactic your team can deploy today.
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("###  ")
-    st.subheader("📉 Top Drivers of Churn (SHAP analysis)")
-    st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
-
+    st.markdown("### Key churn drivers (SHAP importance)")
     drivers = pd.DataFrame({
-        'Feature': ['Total_Trans_Amt', 'Total_Trans_Ct', 'Total_Revolving_Bal',
-                    'Months_Inactive_12_mon', 'Contacts_Count_12_mon',
-                    'Total_Ct_Chng_Q4_Q1', 'Total_Relationship_Count'],
-        'Impact':  [2.44, 1.95, 1.17, 0.93, 0.84, 0.73, 0.68],
-        'Direction': ['Higher amount → ↑ risk', 'Lower count → ↑ risk',
-                      'Lower balance → ↑ risk', 'More inactivity → ↑ risk',
-                      'More contacts → ↑ risk', 'Lower ratio → ↑ risk',
-                      'Fewer products → ↑ risk'],
+        'Feature'    : ['Total_Trans_Amt','Total_Trans_Ct','Total_Revolving_Bal',
+                         'Months_Inactive_12_mon','Contacts_Count_12_mon',
+                         'Total_Ct_Chng_Q4_Q1','Total_Relationship_Count'],
+        'Importance' : [2.44, 1.95, 1.17, 0.93, 0.84, 0.73, 0.68],
+        'Plain name' : ['Transaction volume','Transaction count','Credit balance used',
+                         'Months inactive','Support contacts','Activity trend Q4/Q1',
+                         'Products held'],
     })
 
-    fig_imp = px.bar(
-        drivers.sort_values('Impact'), x='Impact', y='Feature',
-        orientation='h',
-        color='Impact',
-        color_continuous_scale=[[0, '#D4AF37'], [1, '#0A1929']],
+    fig_d = px.bar(
+        drivers.sort_values('Importance'),
+        x='Importance', y='Plain name', orientation='h',
+        color='Importance',
+        color_continuous_scale=[[0,'#93C5FD'],[1,'#0A1929']],
+        text='Importance',
     )
-    fig_imp.update_layout(
-        paper_bgcolor='white', plot_bgcolor='#FAFAF7',
-        font=dict(family='Inter', color='#0A1929'),
-        height=400,
-        margin=dict(l=40, r=20, t=20, b=40),
-        coloraxis_showscale=False,
+    fig_d.update_traces(texttemplate='%{text:.2f}', textposition='outside',
+                        textfont=dict(color='#0A1929'))
+    fig_d.update_layout(
+        paper_bgcolor='white', plot_bgcolor='#F9FAFB',
+        coloraxis_showscale=False, height=360,
+        margin=dict(l=20,r=60,t=20,b=40),
+        xaxis=dict(title='Mean |SHAP| value', color='#374151'),
+        yaxis=dict(color='#374151'),
+        font=dict(family='Inter', color='#374151'),
     )
-    st.plotly_chart(fig_imp, use_container_width=True)
+    st.plotly_chart(fig_d, use_container_width=True)
 
-    st.markdown("###  ")
-    st.subheader("🎯 Recommended Actions by Trigger")
-    st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown("### Matched retention tactics")
 
     actions = [
-        ("Low transaction count (< 40 / year)",
-         "🎁 **Cashback / reward campaign** — incentivize transactions with category-based rewards. Target: +20% transactions in 60 days."),
-        ("3+ months of inactivity",
-         "📞 **Relationship-manager outreach** — personal call within 7 days. Use case: identify dormant causes (life event, dissatisfaction)."),
-        ("Holding ≤ 2 products",
-         "💼 **Cross-sell promotion** — bundle offer for savings, credit card, or investment account. Reduce single-product churn risk by ~50%."),
-        ("Increased customer-service contacts",
-         "🛎️ **Customer experience review** — investigate complaint patterns. High contact count often signals unresolved friction."),
-        ("Declining Q4 vs Q1 activity",
-         "📊 **Behavioral re-engagement campaign** — personalized email with targeted offers based on past spend categories."),
-        ("Low revolving balance utilization",
-         "💳 **Credit-line review** — offer limit increase, balance-transfer promotion, or rewards on revolving usage."),
+        ("🔴", "Low transaction count (< 40/year)",
+         "Cashback or reward campaign",
+         "Incentivise card activity with category-based rewards (e.g. 2x points on grocery spend). Target: +20% transactions within 60 days."),
+        ("🔴", "3+ months of inactivity",
+         "Relationship manager outreach call",
+         "Personal call within 7 days. Identify root cause: life event, dissatisfaction, or better competitor offer. Offer a tailored solution."),
+        ("🟡", "Only 1–2 products held",
+         "Cross-sell bundle offer",
+         "Offer a second product (savings, investment, or card upgrade) with a limited-time fee waiver. Customers with 3+ products churn ~50% less."),
+        ("🟡", "4+ customer service contacts",
+         "Complaint pattern review",
+         "High contact count signals unresolved friction. Pull interaction history, escalate to senior advisor, and issue a goodwill gesture if warranted."),
+        ("🟡", "Declining Q4 vs Q1 activity",
+         "Behavioural re-engagement campaign",
+         "Personalised email with offers tied to past spend categories. Show the customer what benefits they are leaving on the table."),
+        ("🟢", "Low revolving balance",
+         "Credit-line review or balance-transfer offer",
+         "Offer a higher limit, a promotional APR, or a balance-transfer deal to increase engagement with the revolving credit product."),
     ]
-    for trigger, action in actions:
-        st.markdown(f"**Trigger:** {trigger}")
-        st.markdown(action)
-        st.markdown("---")
+
+    for priority, trigger, tactic, detail in actions:
+        bg = "#FEF2F2" if priority == "🔴" else ("#FFFBEB" if priority == "🟡" else "#F0FDF4")
+        bd = "#DC2626" if priority == "🔴" else ("#F59E0B" if priority == "🟡" else "#22C55E")
+        st.markdown(f"""
+        <div style="background:{bg}; border-left:4px solid {bd}; border-radius:0 8px 8px 0;
+                    padding:16px 20px; margin-bottom:14px;">
+          <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:1px;
+                      color:#6B7280; margin-bottom:4px;">TRIGGER {priority}</div>
+          <div style="font-weight:600; color:#0A1929; font-size:1rem; margin-bottom:4px;">{trigger}</div>
+          <div style="font-weight:700; color:{bd}; margin-bottom:6px;">→ {tactic}</div>
+          <div style="color:#374151; font-size:0.93rem;">{detail}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
-# ============================================================
-# PAGE 6: ABOUT
-# ============================================================
+# ══════════════════════════════════════════════════════
+# PAGE 6 — ABOUT
+# ══════════════════════════════════════════════════════
 elif page == "ℹ️ About":
     st.title("About This Project")
-    st.markdown('<div class="accent-line"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
     st.markdown("""
-    ### Project Overview
+    ### Overview
 
-    This dashboard is the productized output of a data-science capstone in
-    **Probability & Statistics**. It combines classical statistical inference
-    (Logistic Regression with p-values, Odds Ratios, hypothesis testing) with
-    modern machine learning (XGBoost + CTGAN + Optuna) and explainable AI (SHAP).
+    This tool is the applied output of a capstone project for the **Probability** course
+    at Eskişehir Osmangazi University. It combines classical statistical inference with
+    modern machine learning and explainable AI to predict bank customer churn.
 
-    ### Dataset
-    - **Source:** Kaggle — Credit Card Customers
-    - **Size:** 10,127 customers × 21 features
-    - **Target:** Attrition_Flag (0 = Retained, 1 = Churned)
-    - **Class distribution:** 84% Retained / 16% Churned (imbalanced)
+    ---
 
-    ### Methodology Pipeline
-    1. Exploratory Data Analysis (distributions, correlations, chi-square tests)
-    2. Outlier analysis, encoding, scaling
-    3. Stratified 80/20 train-test split
-    4. Logistic Regression (statsmodels) — interpretable baseline
-    5. CTGAN — synthetic minority-class generation (class balancing)
-    6. XGBoost — tree-ensemble model on balanced data
-    7. SHAP — explainability layer
-    8. Optuna — Bayesian hyperparameter optimization
+    ### Methodology at a glance
 
-    ### Research Hypotheses
-    | Hypothesis | Result |
-    |---|---|
-    | H1 — Lower transaction count → higher churn | ✅ Confirmed |
-    | H2 — Fewer bank products → higher churn | ✅ Confirmed |
-    | H3 — Lower income → higher churn | ❌ Rejected (high-income customers churn more) |
+    | Step | Technique | Purpose |
+    |---|---|---|
+    | Exploratory analysis | Correlation heatmap, chi-square tests | Understand which features relate to churn |
+    | Class balancing | CTGAN (Conditional Tabular GAN) | Fix 84/16 imbalance in training data |
+    | Baseline model | Logistic Regression (statsmodels) | Interpretable model with p-values and Odds Ratios |
+    | High-performance model | XGBoost | Tree-ensemble for maximum predictive power |
+    | Explainability | SHAP (TreeExplainer) | Make XGBoost predictions transparent |
+    | Optimisation | Optuna (Bayesian search) | Fine-tune XGBoost hyperparameters |
 
-    ### Final Model Performance
-    | Metric | LR | XGBoost+CTGAN | XGBoost+Optuna |
+    ---
+
+    ### Research findings
+
+    Three hypotheses were tested at the p < 0.05 significance level:
+
+    | Hypothesis | Verdict | Key evidence |
+    |---|---|---|
+    | H1 — Fewer transactions → higher churn | ✅ Confirmed | OR = 0.06, p < 0.001 |
+    | H2 — Fewer products → higher churn | ✅ Confirmed | OR = 0.47, p < 0.001 |
+    | H3 — Lower income → higher churn | ❌ Rejected | High-income group ($120K+) actually churns the most |
+
+    H3's rejection is a valuable insight: wealthier customers have more banking alternatives and are more likely to switch for a better offer.
+
+    ---
+
+    ### Final model results
+
+    | | Logistic Regression | XGBoost + CTGAN | XGBoost + Optuna |
     |---|---|---|---|
     | Accuracy | 0.90 | 0.97 | 0.97 |
-    | Precision | 0.78 | 0.92 | 0.92 |
     | Recall | 0.54 | 0.86 | **0.89** |
-    | F1 | 0.64 | 0.89 | **0.90** |
+    | F1-Score | 0.64 | 0.89 | **0.90** |
     | AUC | 0.917 | 0.991 | 0.990 |
 
-    ### Team
-    Ece Gül Yüksel · Selin İnce · Didem Hışırcı
+    ---
 
-    ### Course
-    Probability & Statistics — Eskişehir Osmangazi University
+    ### Dataset
+
+    [Credit Card Customers — Kaggle](https://www.kaggle.com/datasets/sakshigoyal7/credit-card-customers)
+    — 10,127 customers, 21 features.
+
+    ---
+
+    ### Project team
+
+    Ece Gül Yüksel - Selin İnce - Didem Hışırcı
+
+    **Instructor:** Sinem Bozkurt Keser
+    **Course:** Probability — Eskişehir Osmangazi University
     """)

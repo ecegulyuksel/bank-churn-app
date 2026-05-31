@@ -1,6 +1,10 @@
 """
-Bank Customer Churn Risk Manager — v2
+Bank Customer Churn Risk Manager — v2 (corrected)
 Production-ready Streamlit app for bank churn risk intelligence.
+
+NOTE: Best model is XGBoost + CTGAN (highest Recall & F1), consistent with the
+project report. Optuna improved general accuracy slightly but traded off Recall,
+so CTGAN is the final / primary model used for scoring throughout the app.
 """
 
 import streamlit as st
@@ -181,7 +185,7 @@ with st.sidebar:
     ], label_visibility="collapsed")
     st.markdown("---")
     st.markdown("**Active models**")
-    st.markdown("— Logistic Regression\n— XGBoost + CTGAN\n— XGBoost + Optuna ⭐")
+    st.markdown("— Logistic Regression\n— XGBoost + CTGAN ⭐\n— XGBoost + Optuna")
     if READY:
         st.success("Models loaded", icon="✅")
     else:
@@ -238,7 +242,7 @@ if page == "📊 Overview":
     m1.metric("Total Customers",  "10,127")
     m2.metric("Historical Churn", "16.1%", help="Percentage of customers who left in the dataset")
     m3.metric("Best Model AUC",   "0.991", help="Area under ROC curve — 1.0 = perfect, 0.5 = random")
-    m4.metric("Best Recall",      "89%",   help="Of customers who actually churn, we correctly flag 89%")
+    m4.metric("Best Recall",      "88%",   help="Of customers who actually churn, the best model (XGBoost + CTGAN) correctly flags 88%")
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
@@ -249,21 +253,24 @@ if page == "📊 Overview":
         st.markdown("""
         <div class="callout">
         Three models were built. The radar chart shows how each performs across five metrics.
-        XGBoost + Optuna (gold) consistently outperforms the others, especially in <b>Recall</b>
-        — the most important metric for catching churning customers early.
+        <b>XGBoost + CTGAN (gold)</b> gives the best balance of <b>Recall</b> and <b>F1</b> —
+        the metrics that matter most for catching churning customers early. Optuna optimisation
+        slightly raised general accuracy but traded off Recall, so the CTGAN model was kept
+        as the final model.
         </div>
         """, unsafe_allow_html=True)
 
         df_c = pd.DataFrame({
             'Model'     : ['Logistic Regression', 'XGBoost + CTGAN', 'XGBoost + Optuna'],
             'Accuracy'  : [0.90, 0.97, 0.97],
-            'Precision' : [0.78, 0.92, 0.92],
-            'Recall'    : [0.54, 0.86, 0.89],
-            'F1-Score'  : [0.64, 0.89, 0.90],
-            'AUC'       : [0.917, 0.991, 0.990],
+            'Precision' : [0.78, 0.92, 0.94],
+            'Recall'    : [0.54, 0.88, 0.83],
+            'F1-Score'  : [0.64, 0.90, 0.89],
+            'AUC'       : [0.917, 0.991, 0.989],
         })
         metrics = ['Accuracy','Precision','Recall','F1-Score','AUC']
-        colors  = ['#4472C4','#2ECC71','#D4AF37']
+        # CTGAN (best) = gold accent, Optuna = green, LR = blue
+        colors  = ['#4472C4','#D4AF37','#2ECC71']
         fig = go.Figure()
         for i, m in enumerate(df_c['Model']):
             fig.add_trace(go.Scatterpolar(
@@ -308,7 +315,7 @@ if page == "📊 Overview":
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown("### Full metrics table")
     st.dataframe(df_c, use_container_width=True, hide_index=True)
-    st.caption("Recall = share of actual churners we correctly flagged. F1 = balance of precision and recall.")
+    st.caption("Recall = share of actual churners we correctly flagged. F1 = balance of precision and recall. Best model: XGBoost + CTGAN.")
 
 
 # ══════════════════════════════════════════════════════
@@ -392,15 +399,15 @@ elif page == "👤 Single Customer":
             st.plotly_chart(gauge(lr_p, "Logistic Regression"), use_container_width=True, theme=None)
             st.caption("Interpretable baseline model")
         with g2:
-            st.plotly_chart(gauge(xg_p, "XGBoost + CTGAN"), use_container_width=True, theme=None)
-            st.caption("Balanced training model")
-        with g3:
-            st.plotly_chart(gauge(op_p, "XGBoost + Optuna ⭐"), use_container_width=True, theme=None)
+            st.plotly_chart(gauge(xg_p, "XGBoost + CTGAN ⭐"), use_container_width=True, theme=None)
             st.caption("Best-in-class model")
+        with g3:
+            st.plotly_chart(gauge(op_p, "XGBoost + Optuna"), use_container_width=True, theme=None)
+            st.caption("Hyperparameter-tuned variant")
 
-        st.markdown("**Risk level (best model):** " + badge(op_p), unsafe_allow_html=True)
+        st.markdown("**Risk level (best model):** " + badge(xg_p), unsafe_allow_html=True)
 
-        # ── SHAP explanation ──────────────────────────────────
+        # ── SHAP explanation (explains the best model: XGBoost + CTGAN) ──
         st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
         st.markdown("### Why did the model give this score?")
 
@@ -431,15 +438,15 @@ elif page == "👤 Single Customer":
 
         with ex_right:
             fig_shap, ax = plt.subplots(figsize=(7, 4))
-            
+
             # --- ARKA PLANI BEYAZA ZORLA ---
             fig_shap.patch.set_facecolor('white')
             ax.set_facecolor('white')
-            
+
             colors_shap = ['#DC2626' if v > 0 else '#3B82F6' for v in sv.loc[sv_top.index]]
             ax.barh(sv_top.index[::-1], sv.loc[sv_top.index][::-1], color=colors_shap[::-1])
             ax.axvline(0, color='#374151', linewidth=0.8, linestyle='--')
-            
+
             # --- YAZILARI KOYU RENGE ZORLA ---
             ax.set_xlabel("SHAP value (impact on churn probability)", color='#0A1929')
             ax.set_title("Feature Contributions", fontsize=11, fontweight='bold', color='#0A1929')
@@ -453,7 +460,7 @@ elif page == "👤 Single Customer":
             st.pyplot(fig_shap)
             plt.close()
 
-        # ── Suggested action ─────────────────────────────────
+        # ── Suggested action (based on best model: XGBoost + CTGAN) ──
         st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
         st.markdown("### 🎯 Recommended Action")
 
@@ -469,11 +476,11 @@ elif page == "👤 Single Customer":
         if not actions:
             actions.append("**Maintain standard engagement** — this customer appears satisfied. Include in quarterly relationship-health check.")
 
-        box_class = "action-box-urgent" if op_p >= 0.6 else "action-box"
+        box_class = "action-box-urgent" if xg_p >= 0.6 else "action-box"
         action_html = f'<div class="{box_class}">'
-        if op_p >= 0.6:
+        if xg_p >= 0.6:
             action_html += "<b>🚨 HIGH PRIORITY — Act within 7 days</b><br><br>"
-        elif op_p >= 0.3:
+        elif xg_p >= 0.3:
             action_html += "<b>⚠️ MEDIUM PRIORITY — Include in next retention cycle</b><br><br>"
         else:
             action_html += "<b>✅ LOW PRIORITY — Standard monitoring</b><br><br>"
@@ -527,7 +534,8 @@ elif page == "📁 Batch Prediction":
 
         if st.button("⚡ Score All Customers", use_container_width=True):
             with st.spinner(f"Scoring {len(df_up):,} customers…"):
-                proba = xgb_optuna.predict_proba(df_up)[:, 1]
+                # Best model = XGBoost + CTGAN
+                proba = xgb_model.predict_proba(df_up)[:, 1]
                 pred  = (proba >= 0.5).astype(int)
                 result = df_up.copy()
                 result['Churn_Probability_%'] = (proba * 100).round(2)
@@ -575,7 +583,8 @@ elif page == "🎯 Risk Segmentation":
     def get_seg():
         X  = pd.read_csv('X_test.csv')
         y  = pd.read_csv('y_test.csv').squeeze()
-        p  = xgb_optuna.predict_proba(X)[:, 1]
+        # Best model = XGBoost + CTGAN
+        p  = xgb_model.predict_proba(X)[:, 1]
         return X, y, p
 
     try:
@@ -687,13 +696,13 @@ elif page == "💡 Action Guide":
 
     st.markdown("### Key churn drivers (SHAP importance)")
     drivers = pd.DataFrame({
-        'Feature'    : ['Total_Trans_Amt','Total_Trans_Ct','Total_Revolving_Bal',
-                         'Months_Inactive_12_mon','Contacts_Count_12_mon',
-                         'Total_Ct_Chng_Q4_Q1','Total_Relationship_Count'],
-        'Importance' : [2.44, 1.95, 1.17, 0.93, 0.84, 0.73, 0.68],
-        'Plain name' : ['Transaction volume','Transaction count','Credit balance used',
-                         'Months inactive','Support contacts','Activity trend Q4/Q1',
-                         'Products held'],
+        'Feature'    : ['Total_Trans_Ct','Total_Trans_Amt','Total_Revolving_Bal',
+                         'Months_Inactive_12_mon','Total_Relationship_Count',
+                         'Total_Ct_Chng_Q4_Q1','Contacts_Count_12_mon'],
+        'Importance' : [3.92, 1.92, 1.05, 0.93, 0.84, 0.73, 0.68],
+        'Plain name' : ['Transaction count','Transaction volume','Credit balance used',
+                         'Months inactive','Products held','Activity trend Q4/Q1',
+                         'Support contacts'],
     })
 
     fig_d = px.bar(
@@ -799,19 +808,23 @@ elif page == "ℹ️ About":
 
     ### Final model results
 
+    The best model is **XGBoost + CTGAN** — it gives the strongest Recall and F1.
+    Optuna optimisation raised general accuracy slightly but traded off Recall, so the
+    CTGAN model was kept as the final model.
+
     | | Logistic Regression | XGBoost + CTGAN | XGBoost + Optuna |
     |---|---|---|---|
     | Accuracy | 0.90 | 0.97 | 0.97 |
-    | Recall | 0.54 | 0.86 | **0.89** |
-    | F1-Score | 0.64 | 0.89 | **0.90** |
-    | AUC | 0.917 | 0.991 | 0.990 |
+    | Recall | 0.54 | **0.88** | 0.83 |
+    | F1-Score | 0.64 | **0.90** | 0.89 |
+    | AUC | 0.917 | **0.991** | 0.989 |
 
     ---
 
     ### Dataset
 
     [Credit Card Customers — Kaggle](https://www.kaggle.com/datasets/sakshigoyal7/credit-card-customers)
-    — 10,127 customers, 21 features.
+    — 10,127 customers, 19 modelling features (after preprocessing).
 
     ---
 
